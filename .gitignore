@@ -1,0 +1,15 @@
+
+*.json
+*.h5
+*.hdf5
+.DS_Store
+
+.venv
+.idea
+
+data/*/
+*/data
+*/images
+*/models
+
+__pycache__
