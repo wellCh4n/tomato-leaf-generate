@@ -97,10 +97,10 @@ def launch():
     args = parser.parse_args()
     args.run_name = "DDPM_Uncondtional"
     args.epochs = 500
-    args.batch_size = 12
-    args.image_size = 64
+    args.batch_size = 32
+    args.image_size = 256
     args.device = "cuda"
-    args.lr = 3e-4
+    args.lr = 1e-4
     train(args)
 
 
