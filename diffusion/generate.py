@@ -8,6 +8,6 @@ device = "cuda"
 model = UNet().to(device)
 ckpt = torch.load("/home/featurize/tomato-leaf-generate/models/DDPM_Uncondtional/ckpt.pt")
 model.load_state_dict(ckpt)
-diffusion = Diffusion(img_size=64, device=device)
+diffusion = Diffusion(img_size=256, device=device)
 x = diffusion.sample(model, n=16)
 save_images(x, './generate.jpg')
