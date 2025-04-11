@@ -88,7 +88,7 @@ def train(args):
 
         if epoch % 10 == 0:
             sampled_images = diffusion.sample(model, n=images.shape[0])
-            save_images(sampled_images, os.path.join("results", args.run_name, f"{epoch}.jpg"))
+            save_images(sampled_images, os.path.join("images", args.run_name, f"{epoch}.jpg"))
         torch.save(model.state_dict(), os.path.join("models", args.run_name, f"ckpt.pt"))
 
 
@@ -98,7 +98,7 @@ def launch():
     args = parser.parse_args()
     args.run_name = "DDPM_Uncondtional"
     args.epochs = 500
-    args.batch_size = 32
+    args.batch_size = 16
     args.image_size = 256
     args.device = "cuda"
     args.lr = 1e-4

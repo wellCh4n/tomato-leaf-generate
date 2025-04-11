@@ -10,5 +10,6 @@
 */data
 */images
 */models
+*/runs
 
 __pycache__
