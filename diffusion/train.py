@@ -62,7 +62,7 @@ def train(args):
     setup_logging(args.run_name)
     device = args.device
     dataloader = get_data(args)
-    model = UNet(device='mps').to(device)
+    model = UNet().to(device)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     mse = nn.MSELoss()
     diffusion = Diffusion(img_size=args.image_size, device=device)
@@ -99,7 +99,7 @@ def launch():
     args.epochs = 500
     args.batch_size = 12
     args.image_size = 64
-    args.device = "mps"
+    args.device = "cuda"
     args.lr = 3e-4
     train(args)
 
