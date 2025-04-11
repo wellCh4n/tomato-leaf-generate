@@ -1,13 +1,13 @@
-import logging
-
+import os
+import torch
 import torch.nn as nn
-from torch import optim
-from torch.utils.tensorboard import SummaryWriter
+from matplotlib import pyplot as plt
 from tqdm import tqdm
-
-from dataset import TomatoLeafDataset
-from modules import UNet
+from torch import optim
 from utils import *
+from modules import UNet
+import logging
+from torch.utils.tensorboard import SummaryWriter
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s", level=logging.INFO, datefmt="%I:%M:%S")
 
@@ -61,17 +61,7 @@ class Diffusion:
 def train(args):
     setup_logging(args.run_name)
     device = args.device
-
-    transforms = torchvision.transforms.Compose([
-        torchvision.transforms.ToPILImage(),
-        torchvision.transforms.Resize(80),  # args.image_size + 1/4 *args.image_size
-        torchvision.transforms.RandomResizedCrop(args.image_size, scale=(0.8, 1.0)),
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
-
-    tomato_dataset = TomatoLeafDataset(transform=transforms)
-    dataloader = torch.utils.data.DataLoader(tomato_dataset, batch_size=args.batch_size, shuffle=True)
+    dataloader = get_data(args)
     model = UNet().to(device)
     optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     mse = nn.MSELoss()
