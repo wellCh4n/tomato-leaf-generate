@@ -13,9 +13,9 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-from datasets import load_dataset
+from dataset import load_dataset
 
-from dataset.dataset import TomatoLeafDataset
+from dataset.tomato_dataset import TomatoLeafDataset
 
 os.makedirs("images", exist_ok=True)
 

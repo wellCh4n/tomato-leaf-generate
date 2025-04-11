@@ -3,9 +3,8 @@ import torch
 import torchvision
 from PIL import Image
 from matplotlib import pyplot as plt
-from torch.utils.data import DataLoader
 
-from dataset.dataset import TomatoLeafDataset
+from dataset.tomato_dataset import TomatoLeafDataset
 
 
 def plot_images(images):
