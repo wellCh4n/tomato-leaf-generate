@@ -4,7 +4,7 @@ import torchvision
 from PIL import Image
 from matplotlib import pyplot as plt
 
-from data.tomato_dataset import TomatoLeafDataset
+from dataset import TomatoLeafDataset
 
 
 def plot_images(images):
