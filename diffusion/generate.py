@@ -6,7 +6,7 @@ from diffusion.utils import plot_images, save_images
 
 device = "cuda"
 model = UNet().to(device)
-ckpt = torch.load("unconditional_ckpt.pt")
+ckpt = torch.load("/home/featurize/tomato-leaf-generate/models/DDPM_Uncondtional/ckpt.pt")
 model.load_state_dict(ckpt)
 diffusion = Diffusion(img_size=64, device=device)
 x = diffusion.sample(model, n=16)
