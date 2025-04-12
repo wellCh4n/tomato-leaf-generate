@@ -10,18 +10,19 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from torch.autograd import Variable
 
+from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-from dataset import load_dataset
+from datasets import load_dataset
 
 from dataset.tomato_dataset import TomatoLeafDataset
 
 os.makedirs("images", exist_ok=True)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs of training")
-parser.add_argument("--batch_size", type=int, default=64, help="size of the batches")
+parser.add_argument("--n_epochs", type=int, default=500, help="number of epochs of training")
+parser.add_argument("--batch_size", type=int, default=16, help="size of the batches")
 parser.add_argument("--lr1", type=float, default=0.0001, help="adam: learning rate")
 parser.add_argument("--lr2", type=float, default=0.0001, help="adam: learning rate")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
@@ -129,6 +130,9 @@ Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 os.makedirs("models", exist_ok=True)
 best_g_loss = float('inf')
 
+logger = SummaryWriter(os.path.join("runs", "GAN"))
+l = len(dataloader)
+
 # ----------
 #  Training
 # ----------
@@ -191,13 +195,6 @@ for epoch in range(opt.n_epochs):
 
             g_loss.backward()
             optimizer_G.step()
-        
-        # 动态调整学习率
-        if epoch > 50:
-            for param_group in optimizer_G.param_groups:
-                param_group['lr'] = max(param_group['lr'] * 0.998, 1e-5)  # 缓慢降低学习率
-            for param_group in optimizer_D.param_groups:
-                param_group['lr'] = max(param_group['lr'] * 0.998, 1e-5)  # 缓慢降低学习率
 
         # 打印训练进度
         print(
@@ -205,9 +202,12 @@ for epoch in range(opt.n_epochs):
             % (epoch, opt.n_epochs, i, len(dataloader), d_loss.item(), g_loss.item())
         )
 
+        logger.add_scalar("D_loss", d_loss.item(), global_step=epoch * l + i)
+        logger.add_scalar("G_loss", g_loss.item(), global_step=epoch * l + i)
+
         batches_done = epoch * len(dataloader) + i
         if batches_done % opt.sample_interval == 0:
-            save_image(gen_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
+            save_image(gen_imgs.data[:8], "images/%d.png" % batches_done, nrow=8, normalize=True)
     
     # 计算每个epoch的平均生成器损失
     avg_g_loss = epoch_g_loss / len(dataloader)

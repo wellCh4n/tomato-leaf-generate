@@ -13,7 +13,7 @@
 */runs
 
 images
-runs
-models
+diffusion/runs
+diffusion/models
 
 __pycache__
