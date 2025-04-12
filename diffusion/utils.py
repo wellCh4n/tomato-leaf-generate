@@ -3,6 +3,7 @@ import torch
 import torchvision
 from PIL import Image
 from matplotlib import pyplot as plt
+from tqdm import tqdm
 
 from dataset import TomatoLeafDataset
 
@@ -20,6 +21,15 @@ def save_images(images, path, **kwargs):
     ndarr = grid.permute(1, 2, 0).to('cpu').numpy()
     im = Image.fromarray(ndarr)
     im.save(path)
+
+
+def save_images_item(images, path, **kwargs):
+    _trans = torchvision.transforms.ToPILImage()
+    i = 0
+    for image in tqdm(images):
+        img = _trans(image)
+        img.save(f"{path}/{i}.jpg")
+        i = i + 1
 
 
 def get_data(args):
