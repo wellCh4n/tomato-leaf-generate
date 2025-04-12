@@ -112,8 +112,10 @@ transform = transforms.Compose([
 ])
 
 # 数据集和数据加载器
-dataset = TomatoLeafDataset(transform=transform)
-dataloader = DataLoader(dataset, batch_size=opt.batch_size, shuffle=True)
+train_dataset = TomatoLeafDataset(transform=transform, train=True)
+valid_dataset = TomatoLeafDataset(transform=transform, train=False)
+train_dataloader = DataLoader(train_dataset, batch_size=opt.batch_size, shuffle=True)
+valid_dataloader = DataLoader(valid_dataset, batch_size=opt.batch_size, shuffle=False)
 
 # 创建目录
 os.makedirs("images", exist_ok=True)
@@ -124,29 +126,63 @@ writer = SummaryWriter(os.path.join("runs", "VAE"))
 
 # 训练循环
 for epoch in range(opt.n_epochs):
-    for i, imgs in enumerate(dataloader):
+    # 训练阶段
+    vae.train()
+    train_loss = 0
+    for i, imgs in enumerate(train_dataloader):
         imgs = imgs.to(device)
 
         optimizer.zero_grad()
         recon_imgs, mu, log_var = vae(imgs)
-        loss= loss_function(recon_imgs, imgs, mu, log_var)
+        loss = loss_function(recon_imgs, imgs, mu, log_var)
 
         loss.backward()
         optimizer.step()
 
-        # 记录到TensorBoard
-        writer.add_scalar("Loss", loss.item(), epoch * len(dataloader) + i)
+        train_loss += loss.item()
+
+        # 记录每个step的训练损失
+        global_step = epoch * len(train_dataloader) + i
+        writer.add_scalar("Loss/train", loss.item(), global_step)
 
         # 打印训练进度
         print(
-            "[Epoch %d/%d] [Batch %d/%d] [Loss: %f]"
-            % (epoch, opt.n_epochs, i, len(dataloader), loss.item())
+            "[Epoch %d/%d] [Batch %d/%d] [Train Loss: %f]"
+            % (epoch, opt.n_epochs, i, len(train_dataloader), loss.item())
         )
 
         # 保存样本图像
-        batches_done = epoch * len(dataloader) + i
+        batches_done = epoch * len(train_dataloader) + i
         if batches_done % opt.sample_interval == 0:
             save_image(recon_imgs.data[:8], "images/%d.png" % batches_done, nrow=8, normalize=True)
+
+    # 计算平均训练损失 (仅用于打印和保存，不再记录到TensorBoard)
+    avg_train_loss = train_loss / len(train_dataloader)
+
+    # 验证阶段
+    vae.eval()
+    valid_loss = 0
+    with torch.no_grad():
+        for i, imgs in enumerate(valid_dataloader):
+            imgs = imgs.to(device)
+            recon_imgs, mu, log_var = vae(imgs)
+            loss = loss_function(recon_imgs, imgs, mu, log_var)
+            valid_loss += loss.item()
+
+            # 打印验证进度
+            print(
+                "[Epoch %d/%d] [Batch %d/%d] [Valid Loss: %f]"
+                % (epoch, opt.n_epochs, i, len(valid_dataloader), loss.item())
+            )
+
+    # 计算平均验证损失并按epoch记录
+    avg_valid_loss = valid_loss / len(valid_dataloader)
+    writer.add_scalar("Loss/valid", avg_valid_loss, epoch)
+
+    print(
+        "[Epoch %d/%d] [Train Loss: %f] [Valid Loss: %f]"
+        % (epoch, opt.n_epochs, avg_train_loss, avg_valid_loss)
+    )
 
     # 每10个epoch保存一次模型
     if epoch % 10 == 0:
@@ -154,6 +190,8 @@ for epoch in range(opt.n_epochs):
             'epoch': epoch,
             'model_state_dict': vae.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
+            'train_loss': avg_train_loss,
+            'valid_loss': avg_valid_loss
         }, f"models/vae_checkpoint_epoch_{epoch}.pth")
         print(f"Epoch {epoch} 检查点已保存!")
 
