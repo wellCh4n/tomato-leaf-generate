@@ -96,7 +96,7 @@ def loss_function(recon_x, x, mu, log_var, kld_weight=0.00025):
     # 组合损失
     total_loss = recon_loss + kld_weight * kld_loss
 
-    return total_loss
+    return total_loss, recon_loss, kld_loss
 
 
 # 初始化模型
@@ -129,18 +129,20 @@ for epoch in range(opt.n_epochs):
 
         optimizer.zero_grad()
         recon_imgs, mu, log_var = vae(imgs)
-        loss= loss_function(recon_imgs, imgs, mu, log_var)
+        loss, recon_loss, kld_loss = loss_function(recon_imgs, imgs, mu, log_var)
 
         loss.backward()
         optimizer.step()
 
         # 记录到TensorBoard
-        writer.add_scalar("Loss", loss.item(), epoch * len(dataloader) + i)
+        writer.add_scalar("Total Loss", loss.item(), epoch * len(dataloader) + i)
+        writer.add_scalar("Reconstruction Loss", recon_loss.item(), epoch * len(dataloader) + i)
+        writer.add_scalar("KL Divergence Loss", kld_loss.item(), epoch * len(dataloader) + i)
 
         # 打印训练进度
         print(
-            "[Epoch %d/%d] [Batch %d/%d] [Loss: %f]"
-            % (epoch, opt.n_epochs, i, len(dataloader), loss.item())
+            "[Epoch %d/%d] [Batch %d/%d] [Loss: %f] [Recon: %f] [KLD: %f]"
+            % (epoch, opt.n_epochs, i, len(dataloader), loss.item(), recon_loss.item(), kld_loss.item())
         )
 
         # 保存样本图像
