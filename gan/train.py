@@ -23,7 +23,7 @@ os.makedirs("images", exist_ok=True)
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=500, help="number of epochs of training")
 parser.add_argument("--batch_size", type=int, default=16, help="size of the batches")
-parser.add_argument("--lr1", type=float, default=0.0001, help="adam: learning rate")
+parser.add_argument("--lr1", type=float, default=0.0002, help="adam: learning rate")
 parser.add_argument("--lr2", type=float, default=0.0001, help="adam: learning rate")
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
@@ -43,10 +43,10 @@ cuda = True if torch.cuda.is_available() else False
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
-        
+
         self.init_size = opt.img_size // 4  # 初始特征图大小
         self.l1 = nn.Sequential(nn.Linear(opt.latent_dim, 128 * self.init_size ** 2))
-        
+
         self.conv_blocks = nn.Sequential(
             nn.BatchNorm2d(128),
             nn.Upsample(scale_factor=2),
@@ -138,33 +138,32 @@ l = len(dataloader)
 # ----------
 
 for epoch in range(opt.n_epochs):
-    epoch_g_loss = 0  # 初始化每个epoch的生成器损失跟踪器
     for i, imgs in enumerate(dataloader):
         batch_size = imgs.size(0)
-        
+
         # 使用标签平滑化
         valid_smooth = Variable(Tensor(batch_size, 1).fill_(0.9), requires_grad=False)  # 原来是1.0
-        fake_smooth = Variable(Tensor(batch_size, 1).fill_(0.1), requires_grad=False)   # 原来是0.0
+        fake_smooth = Variable(Tensor(batch_size, 1).fill_(0.1), requires_grad=False)  # 原来是0.0
 
         # Configure input
         real_imgs = Variable(imgs.type(Tensor))
-        
+
         # 添加噪声到真实图像
         real_imgs_noisy = real_imgs + 0.05 * torch.randn_like(real_imgs)
-        
+
         # Sample noise as generator input
         z = Variable(Tensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
-        
+
         # Generate a batch of images
         gen_imgs = generator(z)
 
         # ---------------------
         #  训练判别器 (多次训练判别器)
         # ---------------------
-        
+
         # 每训练5次判别器，训练1次生成器
-        d_iters = 5 if i % 5 == 0 else 1
-        
+        d_iters = 1 if i % 1 == 0 else 1
+
         for _ in range(d_iters):
             optimizer_D.zero_grad()
 
@@ -175,7 +174,7 @@ for epoch in range(opt.n_epochs):
 
             d_loss.backward()
             optimizer_D.step()
-            
+
             # 如果判别器太强，提前停止训练
             if d_loss.item() < 0.1:
                 break
@@ -183,15 +182,13 @@ for epoch in range(opt.n_epochs):
         # -----------------
         #  训练生成器 (仅当判别器表现不是太好时)
         # -----------------
-        
+
         # 只有当判别器损失大于阈值时才训练生成器
         if d_loss.item() > 0.2:
             optimizer_G.zero_grad()
 
             # 生成器的损失衡量其欺骗判别器的能力
             g_loss = adversarial_loss(discriminator(gen_imgs), valid_smooth)
-            
-            epoch_g_loss += g_loss.item()  # 累积此epoch的损失
 
             g_loss.backward()
             optimizer_G.step()
@@ -205,20 +202,13 @@ for epoch in range(opt.n_epochs):
         logger.add_scalar("D_loss", d_loss.item(), global_step=epoch * l + i)
         logger.add_scalar("G_loss", g_loss.item(), global_step=epoch * l + i)
 
+        if i % 100 == 0:
+            logger.add_images("generated_images", (gen_imgs.data[:8] * 0.5 + 0.5), global_step=epoch * l + i)
+
         batches_done = epoch * len(dataloader) + i
         if batches_done % opt.sample_interval == 0:
             save_image(gen_imgs.data[:8], "images/%d.png" % batches_done, nrow=8, normalize=True)
-    
-    # 计算每个epoch的平均生成器损失
-    avg_g_loss = epoch_g_loss / len(dataloader)
-    
-    # 保存最佳模型
-    if avg_g_loss < best_g_loss:
-        best_g_loss = avg_g_loss
-        torch.save(generator.state_dict(), "models/best_generator.pth")
-        torch.save(discriminator.state_dict(), "models/best_discriminator.pth")
-        print(f"模型已保存! Epoch {epoch}, 最佳生成器损失: {best_g_loss:.6f}")
-    
+
     # 每10个epoch保存一次检查点
     if epoch % 10 == 0:
         torch.save({
