@@ -34,13 +34,13 @@ class VAE(nn.Module):
         # 编码器
         self.encoder = nn.Sequential(
             nn.Conv2d(opt.channels, 32, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU()
+            nn.ReLU()
         )
 
         # 潜在空间均值和对数方差
@@ -52,11 +52,11 @@ class VAE(nn.Module):
 
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.ConvTranspose2d(32, opt.channels, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.Tanh()
         )
@@ -86,10 +86,17 @@ class VAE(nn.Module):
 
 
 # 损失函数
-def loss_function(recon_x, x, mu, log_var):
-    BCE = F.mse_loss(recon_x, x, reduction='mean')
-    KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-    return BCE + KLD
+def loss_function(recon_x, x, mu, log_var, kld_weight=0.00025):
+    # MSE损失 (batch平均)
+    recon_loss = F.mse_loss(recon_x, x, reduction='mean')
+
+    # KL散度 (batch平均)
+    kld_loss = -0.5 * torch.mean(1 + log_var - mu.pow(2) - log_var.exp())
+
+    # 组合损失
+    total_loss = recon_loss + kld_weight * kld_loss
+
+    return total_loss
 
 
 # 初始化模型
@@ -105,10 +112,8 @@ transform = transforms.Compose([
 ])
 
 # 数据集和数据加载器
-train_dataset = TomatoLeafDataset(transform=transform, train=True)
-val_dataset = TomatoLeafDataset(transform=transform, train=False)
-train_dataloader = DataLoader(train_dataset, batch_size=opt.batch_size, shuffle=True)
-val_dataloader = DataLoader(val_dataset, batch_size=opt.batch_size, shuffle=False)
+dataset = TomatoLeafDataset(transform=transform)
+dataloader = DataLoader(dataset, batch_size=opt.batch_size, shuffle=True)
 
 # 创建目录
 os.makedirs("images", exist_ok=True)
@@ -119,45 +124,29 @@ writer = SummaryWriter(os.path.join("runs", "VAE"))
 
 # 训练循环
 for epoch in range(opt.n_epochs):
-    # 训练循环
-    total_loss = 0
-    for i, imgs in enumerate(train_dataloader):
+    for i, imgs in enumerate(dataloader):
         imgs = imgs.to(device)
 
         optimizer.zero_grad()
         recon_imgs, mu, log_var = vae(imgs)
-        loss = loss_function(recon_imgs, imgs, mu, log_var)
+        loss= loss_function(recon_imgs, imgs, mu, log_var)
 
         loss.backward()
         optimizer.step()
 
-        total_loss += loss.item()
-
         # 记录到TensorBoard
-        writer.add_scalar("train/loss", loss.item(), epoch * len(train_dataloader) + i)
+        writer.add_scalar("Loss", loss.item(), epoch * len(dataloader) + i)
 
-    # 验证阶段
-    val_loss = 0
-    with torch.no_grad():
-        for i, imgs in enumerate(val_dataloader):
-            imgs = imgs.to(device)
-            recon_imgs, mu, log_var = vae(imgs)
-            loss = loss_function(recon_imgs, imgs, mu, log_var)
-            val_loss += loss.item()
+        # 打印训练进度
+        print(
+            "[Epoch %d/%d] [Batch %d/%d] [Loss: %f]"
+            % (epoch, opt.n_epochs, i, len(dataloader), loss.item())
+        )
 
-    # 记录验证损失
-    avg_val_loss = val_loss / len(val_dataloader)
-    writer.add_scalar("val/loss", avg_val_loss, epoch)
-
-    # 打印训练和验证损失
-    print(
-        "[Epoch %d/%d] [Train Loss: %f] [Val Loss: %f]"
-        % (epoch, opt.n_epochs, total_loss / len(train_dataloader), avg_val_loss)
-    )
-
-    # 保存样本图像
-    batches_done = epoch * len(train_dataloader) + i
-    save_image(recon_imgs.data[:8], "images/%d.png" % batches_done, nrow=8, normalize=True)
+        # 保存样本图像
+        batches_done = epoch * len(dataloader) + i
+        if batches_done % opt.sample_interval == 0:
+            save_image(recon_imgs.data[:8], "images/%d.png" % batches_done, nrow=8, normalize=True)
 
     # 每10个epoch保存一次模型
     if epoch % 10 == 0:
@@ -165,7 +154,6 @@ for epoch in range(opt.n_epochs):
             'epoch': epoch,
             'model_state_dict': vae.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'loss': total_loss / len(train_dataloader),
         }, f"models/vae_checkpoint_epoch_{epoch}.pth")
         print(f"Epoch {epoch} 检查点已保存!")
 
