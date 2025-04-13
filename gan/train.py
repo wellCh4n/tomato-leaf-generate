@@ -96,129 +96,131 @@ class Discriminator(nn.Module):
         return validity
 
 
-# Loss function
-adversarial_loss = torch.nn.BCELoss()
 
-# Initialize generator and discriminator
-generator = Generator()
-discriminator = Discriminator()
+if __name__ == "__main__":
+    # Loss function
+    adversarial_loss = torch.nn.BCELoss()
 
-if cuda:
-    generator.cuda()
-    discriminator.cuda()
-    adversarial_loss.cuda()
+    # Initialize generator and discriminator
+    generator = Generator()
+    discriminator = Discriminator()
 
-# 添加数据预处理
-transform = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.Resize((opt.img_size, opt.img_size)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-])
+    if cuda:
+        generator.cuda()
+        discriminator.cuda()
+        adversarial_loss.cuda()
 
-tomato_dataset = TomatoLeafDataset(transform=transform)
+    # 添加数据预处理
+    transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize((opt.img_size, opt.img_size)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    ])
 
-dataloader = torch.utils.data.DataLoader(tomato_dataset, batch_size=opt.batch_size, shuffle=True)
+    tomato_dataset = TomatoLeafDataset(transform=transform)
 
-# Optimizers
-optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr1, betas=(opt.b1, opt.b2))
-optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr2, betas=(opt.b1, opt.b2))
+    dataloader = torch.utils.data.DataLoader(tomato_dataset, batch_size=opt.batch_size, shuffle=True)
 
-Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+    # Optimizers
+    optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr1, betas=(opt.b1, opt.b2))
+    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr2, betas=(opt.b1, opt.b2))
 
-# 在训练循环前添加
-os.makedirs("models", exist_ok=True)
-best_g_loss = float('inf')
+    Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
-logger = SummaryWriter(os.path.join("runs", "GAN"))
-l = len(dataloader)
+    # 在训练循环前添加
+    os.makedirs("models", exist_ok=True)
+    best_g_loss = float('inf')
 
-# ----------
-#  Training
-# ----------
+    logger = SummaryWriter(os.path.join("runs", "GAN"))
+    l = len(dataloader)
 
-for epoch in range(opt.n_epochs):
-    for i, imgs in enumerate(dataloader):
-        batch_size = imgs.size(0)
+    # ----------
+    #  Training
+    # ----------
 
-        # 使用标签平滑化
-        valid_smooth = Variable(Tensor(batch_size, 1).fill_(0.9), requires_grad=False)  # 原来是1.0
-        fake_smooth = Variable(Tensor(batch_size, 1).fill_(0.1), requires_grad=False)  # 原来是0.0
+    for epoch in range(opt.n_epochs):
+        for i, imgs in enumerate(dataloader):
+            batch_size = imgs.size(0)
 
-        # Configure input
-        real_imgs = Variable(imgs.type(Tensor))
+            # 使用标签平滑化
+            valid_smooth = Variable(Tensor(batch_size, 1).fill_(0.9), requires_grad=False)  # 原来是1.0
+            fake_smooth = Variable(Tensor(batch_size, 1).fill_(0.1), requires_grad=False)  # 原来是0.0
 
-        # 添加噪声到真实图像
-        real_imgs_noisy = real_imgs + 0.05 * torch.randn_like(real_imgs)
+            # Configure input
+            real_imgs = Variable(imgs.type(Tensor))
 
-        # Sample noise as generator input
-        z = Variable(Tensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
+            # 添加噪声到真实图像
+            real_imgs_noisy = real_imgs + 0.05 * torch.randn_like(real_imgs)
 
-        # Generate a batch of images
-        gen_imgs = generator(z)
+            # Sample noise as generator input
+            z = Variable(Tensor(np.random.normal(0, 1, (batch_size, opt.latent_dim))))
 
-        # ---------------------
-        #  训练判别器 (多次训练判别器)
-        # ---------------------
+            # Generate a batch of images
+            gen_imgs = generator(z)
 
-        # 每训练5次判别器，训练1次生成器
-        d_iters = 1 if i % 1 == 0 else 1
+            # ---------------------
+            #  训练判别器 (多次训练判别器)
+            # ---------------------
 
-        for _ in range(d_iters):
-            optimizer_D.zero_grad()
+            # 每训练5次判别器，训练1次生成器
+            d_iters = 1 if i % 1 == 0 else 1
 
-            # 测量判别器区分真实样本和生成样本的能力
-            real_loss = adversarial_loss(discriminator(real_imgs_noisy), valid_smooth)
-            fake_loss = adversarial_loss(discriminator(gen_imgs.detach()), fake_smooth)
-            d_loss = (real_loss + fake_loss) / 2
+            for _ in range(d_iters):
+                optimizer_D.zero_grad()
 
-            d_loss.backward()
-            optimizer_D.step()
+                # 测量判别器区分真实样本和生成样本的能力
+                real_loss = adversarial_loss(discriminator(real_imgs_noisy), valid_smooth)
+                fake_loss = adversarial_loss(discriminator(gen_imgs.detach()), fake_smooth)
+                d_loss = (real_loss + fake_loss) / 2
 
-            # 如果判别器太强，提前停止训练
-            if d_loss.item() < 0.1:
-                break
+                d_loss.backward()
+                optimizer_D.step()
 
-        # -----------------
-        #  训练生成器 (仅当判别器表现不是太好时)
-        # -----------------
+                # 如果判别器太强，提前停止训练
+                if d_loss.item() < 0.1:
+                    break
 
-        # 只有当判别器损失大于阈值时才训练生成器
-        if d_loss.item() > 0.2:
-            optimizer_G.zero_grad()
+            # -----------------
+            #  训练生成器 (仅当判别器表现不是太好时)
+            # -----------------
 
-            # 生成器的损失衡量其欺骗判别器的能力
-            g_loss = adversarial_loss(discriminator(gen_imgs), valid_smooth)
+            # 只有当判别器损失大于阈值时才训练生成器
+            if d_loss.item() > 0.2:
+                optimizer_G.zero_grad()
 
-            g_loss.backward()
-            optimizer_G.step()
+                # 生成器的损失衡量其欺骗判别器的能力
+                g_loss = adversarial_loss(discriminator(gen_imgs), valid_smooth)
 
-        # 打印训练进度
-        print(
-            "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
-            % (epoch, opt.n_epochs, i, len(dataloader), d_loss.item(), g_loss.item())
-        )
+                g_loss.backward()
+                optimizer_G.step()
 
-        logger.add_scalar("D_loss", d_loss.item(), global_step=epoch * l + i)
-        logger.add_scalar("G_loss", g_loss.item(), global_step=epoch * l + i)
+            # 打印训练进度
+            print(
+                "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
+                % (epoch, opt.n_epochs, i, len(dataloader), d_loss.item(), g_loss.item())
+            )
 
-        if i % 100 == 0:
-            logger.add_images("generated_images", (gen_imgs.data[:8] * 0.5 + 0.5), global_step=epoch * l + i)
+            logger.add_scalar("D_loss", d_loss.item(), global_step=epoch * l + i)
+            logger.add_scalar("G_loss", g_loss.item(), global_step=epoch * l + i)
 
-        batches_done = epoch * len(dataloader) + i
-        if batches_done % opt.sample_interval == 0:
-            save_image(gen_imgs.data[:8], "images/%d.png" % batches_done, nrow=8, normalize=True)
+            if i % 100 == 0:
+                logger.add_images("generated_images", (gen_imgs.data[:8] * 0.5 + 0.5), global_step=epoch * l + i)
 
-    # 每10个epoch保存一次检查点
-    if epoch % 10 == 0:
-        torch.save({
-            'epoch': epoch,
-            'generator_state_dict': generator.state_dict(),
-            'discriminator_state_dict': discriminator.state_dict(),
-            'optimizer_G_state_dict': optimizer_G.state_dict(),
-            'optimizer_D_state_dict': optimizer_D.state_dict(),
-            'g_loss': g_loss,
-            'd_loss': d_loss,
-            'best_g_loss': best_g_loss
-        }, f"models/checkpoint_epoch_{epoch}.pth")
-        print(f"Epoch {epoch} 检查点已保存!")
+            batches_done = epoch * len(dataloader) + i
+            if batches_done % opt.sample_interval == 0:
+                save_image(gen_imgs.data[:8], "images/%d.png" % batches_done, nrow=8, normalize=True)
+
+        # 每10个epoch保存一次检查点
+        if epoch % 10 == 0:
+            torch.save({
+                'epoch': epoch,
+                'generator_state_dict': generator.state_dict(),
+                'discriminator_state_dict': discriminator.state_dict(),
+                'optimizer_G_state_dict': optimizer_G.state_dict(),
+                'optimizer_D_state_dict': optimizer_D.state_dict(),
+                'g_loss': g_loss,
+                'd_loss': d_loss,
+                'best_g_loss': best_g_loss
+            }, f"models/checkpoint_epoch_{epoch}.pth")
+            print(f"Epoch {epoch} 检查点已保存!")

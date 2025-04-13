@@ -99,64 +99,65 @@ def loss_function(recon_x, x, mu, log_var, kld_weight=0.00025):
     return total_loss, recon_loss, kld_loss
 
 
-# 初始化模型
-vae = VAE().to(device)
-optimizer = torch.optim.Adam(vae.parameters(), lr=opt.lr)
+if __name__ == '__main__':
+    # 初始化模型
+    vae = VAE().to(device)
+    optimizer = torch.optim.Adam(vae.parameters(), lr=opt.lr)
 
-# 数据预处理
-transform = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.Resize((opt.img_size, opt.img_size)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-])
+    # 数据预处理
+    transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize((opt.img_size, opt.img_size)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    ])
 
-# 数据集和数据加载器
-dataset = TomatoLeafDataset(transform=transform)
-dataloader = DataLoader(dataset, batch_size=opt.batch_size, shuffle=True)
+    # 数据集和数据加载器
+    dataset = TomatoLeafDataset(transform=transform)
+    dataloader = DataLoader(dataset, batch_size=opt.batch_size, shuffle=True)
 
-# 创建目录
-os.makedirs("images", exist_ok=True)
-os.makedirs("models", exist_ok=True)
+    # 创建目录
+    os.makedirs("images", exist_ok=True)
+    os.makedirs("models", exist_ok=True)
 
-# TensorBoard日志
-writer = SummaryWriter(os.path.join("runs", "VAE"))
+    # TensorBoard日志
+    writer = SummaryWriter(os.path.join("runs", "VAE"))
 
-# 训练循环
-for epoch in range(opt.n_epochs):
-    for i, imgs in enumerate(dataloader):
-        imgs = imgs.to(device)
+    # 训练循环
+    for epoch in range(opt.n_epochs):
+        for i, imgs in enumerate(dataloader):
+            imgs = imgs.to(device)
 
-        optimizer.zero_grad()
-        recon_imgs, mu, log_var = vae(imgs)
-        loss, recon_loss, kld_loss = loss_function(recon_imgs, imgs, mu, log_var)
+            optimizer.zero_grad()
+            recon_imgs, mu, log_var = vae(imgs)
+            loss, recon_loss, kld_loss = loss_function(recon_imgs, imgs, mu, log_var)
 
-        loss.backward()
-        optimizer.step()
+            loss.backward()
+            optimizer.step()
 
-        # 记录到TensorBoard
-        writer.add_scalar("Total Loss", loss.item(), epoch * len(dataloader) + i)
-        writer.add_scalar("Reconstruction Loss", recon_loss.item(), epoch * len(dataloader) + i)
-        writer.add_scalar("KL Divergence Loss", kld_loss.item(), epoch * len(dataloader) + i)
+            # 记录到TensorBoard
+            writer.add_scalar("Total Loss", loss.item(), epoch * len(dataloader) + i)
+            writer.add_scalar("Reconstruction Loss", recon_loss.item(), epoch * len(dataloader) + i)
+            writer.add_scalar("KL Divergence Loss", kld_loss.item(), epoch * len(dataloader) + i)
 
-        # 打印训练进度
-        print(
-            "[Epoch %d/%d] [Batch %d/%d] [Loss: %f] [Recon: %f] [KLD: %f]"
-            % (epoch, opt.n_epochs, i, len(dataloader), loss.item(), recon_loss.item(), kld_loss.item())
-        )
+            # 打印训练进度
+            print(
+                "[Epoch %d/%d] [Batch %d/%d] [Loss: %f] [Recon: %f] [KLD: %f]"
+                % (epoch, opt.n_epochs, i, len(dataloader), loss.item(), recon_loss.item(), kld_loss.item())
+            )
 
-        # 保存样本图像
-        batches_done = epoch * len(dataloader) + i
-        if batches_done % opt.sample_interval == 0:
-            save_image(recon_imgs.data[:8], "images/%d.png" % batches_done, nrow=8, normalize=True)
+            # 保存样本图像
+            batches_done = epoch * len(dataloader) + i
+            if batches_done % opt.sample_interval == 0:
+                save_image(recon_imgs.data[:8], "images/%d.png" % batches_done, nrow=8, normalize=True)
 
-    # 每10个epoch保存一次模型
-    if epoch % 10 == 0:
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': vae.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-        }, f"models/vae_checkpoint_epoch_{epoch}.pth")
-        print(f"Epoch {epoch} 检查点已保存!")
+        # 每10个epoch保存一次模型
+        if epoch % 10 == 0:
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': vae.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+            }, f"models/vae_checkpoint_epoch_{epoch}.pth")
+            print(f"Epoch {epoch} 检查点已保存!")
 
-writer.close()
+    writer.close()
